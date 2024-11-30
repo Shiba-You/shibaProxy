@@ -1,0 +1,74 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Create DNS
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project Name for all
+  KeyName:
+    Type: String
+    Description: EC2 key pair
+  MyHomeIP:
+    Type: String
+    Description: Muy Home IP address
+
+Resources:
+  ############################################
+  #### EC2                                ####
+  ############################################
+  EC2:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-03f584e50b2d32776
+      KeyName: !Ref KeyName
+      InstanceType: t2.micro
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: "false"
+          DeviceIndex: "0"
+          SubnetId: { "Fn::ImportValue": !Sub "${ProjectName}-PriSub1aId" }
+          GroupSet:
+            - !Ref EC2sgClient
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-ec2
+
+  ############################################
+  #### security group                     ####
+  ############################################
+  EC2sgClient:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub ${ProjectName}-ec2-client-sg
+      GroupName: !Sub ${ProjectName}-ec2-client-sg
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: "0.0.0.0/0"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Sub ${MyHomeIP}
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-ec2-client-sg
+      VpcId: { "Fn::ImportValue": !Sub "${ProjectName}-VpcId" }
+
+############################################
+#### OutPuts                            ####
+############################################
+Outputs:
+  EC2:
+    Value: !Ref EC2
+    Description: EC2 Proxy Client
+    Export:
+      Name: !Sub ${ProjectName}-ec2-proxy-client
+  EC2sgDns:
+    Value:
+      Fn::GetAtt:
+        - EC2sgClient
+        - GroupId
+    Description: Proxy EC2sg client
+    Export:
+      Name: !Sub ${ProjectName}-ec2-proxy-client-sg

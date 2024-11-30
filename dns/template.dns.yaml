@@ -1,0 +1,98 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: create DNS
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project Name for all
+  KeyName:
+    Type: String
+    Description: EC2 key pair
+  MyHomeIP:
+    Type: String
+    Description: Muy Home IP address
+
+Resources:
+  ############################################
+  #### EC2                                ####
+  ############################################
+  EC2:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-03f584e50b2d32776
+      KeyName: !Ref KeyName
+      InstanceType: t2.micro
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: "true"
+          DeviceIndex: "0"
+          SubnetId: { "Fn::ImportValue": !Sub "${ProjectName}-PubSub1aId" }
+          GroupSet:
+            - !Ref EC2sg
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-ec2-dns
+
+  ############################################
+  #### security group                     ####
+  ############################################
+  EC2sg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub ${ProjectName}-ec2-dns-sg
+      GroupName: !Sub ${ProjectName}-ec2-dns-sg
+      SecurityGroupEgress:
+        - IpProtocol: udp # DNSクエリ用のEgressルール
+          FromPort: 53
+          ToPort: 53
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: tcp # DNSクエリ用のEgressルール
+          FromPort: 53
+          ToPort: 53
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: tcp # システムの更新用Egressルール (HTTP)
+          FromPort: 80
+          ToPort: 80
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: tcp # システムの更新用Egressルール (HTTPS)
+          FromPort: 443
+          ToPort: 443
+          CidrIp: "0.0.0.0/0"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: 10.0.0.0/16 # VPC全体のCiderブロック
+        - IpProtocol: udp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: 10.0.0.0/16 # VPC全体のCiderブロック
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Sub ${MyHomeIP}
+        - IpProtocol: tcp
+          FromPort: 953
+          ToPort: 953
+          CidrIp: 10.0.0.0/16
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-ec2-dns-sg
+      VpcId: { "Fn::ImportValue": !Sub "${ProjectName}-VpcId" }
+
+############################################
+#### OutPuts                            ####
+############################################
+Outputs:
+  EC2:
+    Value: !Ref EC2
+    Description: EC2 dns
+    Export:
+      Name: !Sub ${ProjectName}-ec2-dns
+  EC2DnsSg:
+    Value:
+      Fn::GetAtt:
+        - EC2sg
+        - GroupId
+    Description: Proxy EC2sg dns
+    Export:
+      Name: !Sub ${ProjectName}-ec2-dns-sg

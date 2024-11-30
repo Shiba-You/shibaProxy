@@ -1,0 +1,205 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Create VPC
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project Name for all
+  VPCCiderBlock:
+    Default: 10.0.0.0/16
+    Type: String
+    Description: VPC Cider Block for VPC
+  PubSub1aCiderBlock:
+    Default: 10.0.10.0/24
+    Type: String
+    Description: Public Subnet 1a Cider Block for PublicSubnet1a
+  PriSub1aCiderBlock:
+    Default: 10.0.20.0/24
+    Type: String
+    Description: Private Subnet 1a Cider Block for PrivateSubnet1a
+  PubSub1cCiderBlock:
+    Default: 10.0.30.0/24
+    Type: String
+    Description: Public Subnet 1c Cider Block for PublicSubnet1c
+  PriSub1cCiderBlock:
+    Default: 10.0.40.0/24
+    Type: String
+    Description: Private Subnet 1c Cider Block for PrivateSubnet1c
+
+Resources:
+  ############################################
+  #### VPC                                ####
+  ############################################
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VPCCiderBlock
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      InstanceTenancy: default
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-VPC
+
+  ############################################
+  #### Subnet                             ####
+  ############################################
+  PubSubnet1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: ap-northeast-1a
+      CidrBlock: !Ref PubSub1aCiderBlock
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-Public-Subnet-1a
+
+  PriSubnet1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: ap-northeast-1a
+      CidrBlock: !Ref PriSub1aCiderBlock
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-Private-Subnet-1a
+
+  PubSubnet1c:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: ap-northeast-1c
+      CidrBlock: !Ref PubSub1cCiderBlock
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-Public-Subnet-1c
+
+  PriSubnet1c:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: ap-northeast-1c
+      CidrBlock: !Ref PriSub1cCiderBlock
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-Private-Subnet-1c
+
+  ############################################
+  #### Route Table                        ####
+  ############################################
+  PubRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-rtb-public
+      VpcId: !Ref VPC
+
+  PriRouteTable1a:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-rtb-private-1a
+      VpcId: !Ref VPC
+
+  PriRouteTable1c:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-rtb-private-1c
+      VpcId: !Ref VPC
+
+  ############################################
+  #### Gateway                            ####
+  ############################################
+  S3Endpoint:
+    Type: "AWS::EC2::VPCEndpoint"
+    Properties:
+      RouteTableIds:
+        - !Ref PriRouteTable1a
+        - !Ref PriRouteTable1c
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.s3"
+      VpcEndpointType: Gateway
+      VpcId: !Ref VPC
+
+  IGW:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-igw
+
+  IGWAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref IGW
+      VpcId: !Ref VPC
+
+  ############################################
+  #### Route                              ####
+  ############################################
+  PubRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref IGW
+      RouteTableId: !Ref PubRouteTable
+
+  ############################################
+  #### Route Table Association            ####
+  ############################################
+  PubSub1aRouteTableAssociate:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PubRouteTable
+      SubnetId: !Ref PubSubnet1a
+
+  PubSub1cRouteTableAssociate:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PubRouteTable
+      SubnetId: !Ref PubSubnet1c
+
+  PriSub1aRouteTableAssociate:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PriRouteTable1a
+      SubnetId: !Ref PriSubnet1a
+
+  PriSub1cRouteTableAssociate:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PriRouteTable1c
+      SubnetId: !Ref PriSubnet1c
+
+############################################
+#### OutPuts                            ####
+############################################
+Outputs:
+  VpcId:
+    Value: !Ref VPC
+    Description: VPC ID
+    Export:
+      Name: !Sub ${ProjectName}-VpcId
+  PubSub1aId:
+    Value: !Ref PubSubnet1a
+    Description: Public Subnet ID in ap-northeast-1a
+    Export:
+      Name: !Sub ${ProjectName}-PubSub1aId
+  PubSub1cId:
+    Value: !Ref PubSubnet1c
+    Description: Public Subnet ID in ap-northeast-1c
+    Export:
+      Name: !Sub ${ProjectName}-PubSub1cId
+  PriSub1aId:
+    Value: !Ref PriSubnet1a
+    Description: Private Subnet ID in ap-northeast-1a
+    Export:
+      Name: !Sub ${ProjectName}-PriSub1aId
+  PriSub1cId:
+    Value: !Ref PriSubnet1c
+    Description: Private Subnet ID in ap-northeast-1c
+    Export:
+      Name: !Sub ${ProjectName}-PriSub1cId

@@ -1,0 +1,74 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Create Bastion
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project Name for all
+  KeyName:
+    Type: String
+    Description: EC2 key pair
+  MyHomeIP:
+    Type: String
+    Description: Muy Home IP address
+
+Resources:
+  ############################################
+  #### EC2                                ####
+  ############################################
+  EC2:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-03f584e50b2d32776
+      KeyName: !Ref KeyName
+      InstanceType: t2.micro
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: "true"
+          DeviceIndex: "0"
+          SubnetId: { "Fn::ImportValue": !Sub "${ProjectName}-PubSub1aId" }
+          GroupSet:
+            - !Ref EC2sgBastion
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-ec2-bastion
+
+  ############################################
+  #### security group                     ####
+  ############################################
+  EC2sgBastion:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub ${ProjectName}-ec2-bastion-sg
+      GroupName: !Sub ${ProjectName}-ec2-bastion-sg
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 10.0.0.0/16
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Sub ${MyHomeIP}
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-ec2-bastion-sg
+      VpcId: { "Fn::ImportValue": !Sub "${ProjectName}-VpcId" }
+
+############################################
+#### OutPuts                            ####
+############################################
+Outputs:
+  EC2:
+    Value: !Ref EC2
+    Description: EC2 Proxy bastion
+    Export:
+      Name: !Sub ${ProjectName}-ec2-proxy-bastion
+  EC2sgDns:
+    Value:
+      Fn::GetAtt:
+        - EC2sgBastion
+        - GroupId
+    Description: Proxy EC2sg bastion
+    Export:
+      Name: !Sub ${ProjectName}-ec2-proxy-bastion-sg

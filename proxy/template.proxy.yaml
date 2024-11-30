@@ -1,0 +1,100 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Create Proxy
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project Name for all
+  KeyName:
+    Type: String
+    Description: EC2 key pair
+  MyHomeIP:
+    Type: String
+    Description: Muy Home IP address
+
+Resources:
+  ############################################
+  #### EC2                                ####
+  ############################################
+  EC2:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-03f584e50b2d32776
+      KeyName: !Ref KeyName
+      InstanceType: t2.micro
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: "true"
+          DeviceIndex: "0"
+          SubnetId: { "Fn::ImportValue": !Sub "${ProjectName}-PubSub1aId" }
+          GroupSet:
+            - !Ref EC2sg
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-ec2-proxy
+
+  ############################################
+  #### security group                     ####
+  ############################################
+  EC2sg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub ${ProjectName}-ec2-proxy-sg
+      GroupName: !Sub ${ProjectName}-ec2-proxy-sg
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: udp
+          FromPort: 53
+          ToPort: 53
+          DestinationSecurityGroupId:
+            { "Fn::ImportValue": !Sub "${ProjectName}-ec2-dns-sg" } # 自作DNSサーバと繋げる場合
+            # 0.0.0.0/0                                                     # 外部DNSサーバと繋げる場合
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: !Sub ${MyHomeIP}
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Sub ${MyHomeIP}
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Sub ${MyHomeIP}
+        - IpProtocol: tcp
+          FromPort: 3128
+          ToPort: 3128
+          CidrIp: !Sub ${MyHomeIP}
+        - IpProtocol: tcp
+          FromPort: 3128
+          ToPort: 3128
+          CidrIp: 10.0.10.0/24 # PubSub1aCiderBlockのCiderIp （clientのec2からの通信を許可）
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-ec2-proxy-sg
+      VpcId: { "Fn::ImportValue": !Sub "${ProjectName}-VpcId" }
+
+############################################
+#### OutPuts                            ####
+############################################
+Outputs:
+  EC2:
+    Value: !Ref EC2
+    Description: EC2 Proxy
+    Export:
+      Name: !Sub ${ProjectName}-ec2-proxy
+  EC2sgDns:
+    Value:
+      Fn::GetAtt:
+        - EC2sg
+        - GroupId
+    Description: Proxy EC2sg dns
+    Export:
+      Name: !Sub ${ProjectName}-ec2-proxy-sg
