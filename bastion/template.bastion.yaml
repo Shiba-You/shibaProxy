@@ -55,6 +55,23 @@ Resources:
           Value: !Sub ${ProjectName}-ec2-bastion-sg
       VpcId: { "Fn::ImportValue": !Sub "${ProjectName}-VpcId" }
 
+  ############################################
+  #### Delete Stack Sceduler              ####
+  ############################################
+  EventSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Description: "Delete Schedule"
+      ScheduleExpression: !Sub "cron(15 02 ? * * *)"
+      ScheduleExpressionTimezone: "Asia/Tokyo"
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      State: ENABLED
+      Target:
+        Arn: "arn:aws:scheduler:::aws-sdk:cloudformation:deleteStack"
+        Input: !Sub '{ "StackName": "${AWS::StackName}" }'
+        RoleArn: !ImportValue DeleteSchedulerRoleARN
+
 ############################################
 #### OutPuts                            ####
 ############################################
@@ -64,7 +81,7 @@ Outputs:
     Description: EC2 Proxy bastion
     Export:
       Name: !Sub ${ProjectName}-ec2-proxy-bastion
-  EC2sgDns:
+  EC2sgBastion:
     Value:
       Fn::GetAtt:
         - EC2sgBastion

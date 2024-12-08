@@ -7,23 +7,108 @@ sudo yum install -y squid
 # squidの設定ファイル設定
 sudo vi /etc/squid/squid.conf
 ```/etc/squid/squid.conf
-acl client_pc src <クライアントPCのローカルIP>  # client_pcの定義
-http_access allow client_pc                 # client_pcの許可
-http_access allow localnet                  # 同じサブネット内のclient用
+#
+# Recommended minimum configuration:
+#
+
+# Example rule allowing access from your local networks.
+# Adapt to list your (internal) IP networks from where browsing
+# should be allowed
+acl localnet src 0.0.0.1-0.255.255.255  # RFC 1122 "this" network (LAN)
+acl localnet src 10.0.0.0/8             # RFC 1918 local private network (LAN)
+acl localnet src 100.64.0.0/10          # RFC 6598 shared address space (CGN)
+acl localnet src 169.254.0.0/16         # RFC 3927 link-local (directly plugged) machines
+acl localnet src 172.16.0.0/12          # RFC 1918 local private network (LAN)
+acl localnet src 192.168.0.0/16         # RFC 1918 local private network (LAN)
+acl localnet src fc00::/7               # RFC 4193 local private network range
+acl localnet src fe80::/10              # RFC 4291 link-local (directly plugged) machines
+
+acl SSL_ports port 443
+acl Safe_ports port 80          # http
+acl Safe_ports port 21          # ftp
+acl Safe_ports port 443         # https
+acl Safe_ports port 70          # gopher
+acl Safe_ports port 210         # wais
+acl Safe_ports port 1025-65535  # unregistered ports
+acl Safe_ports port 280         # http-mgmt
+acl Safe_ports port 488         # gss-http
+acl Safe_ports port 591         # filemaker
+acl Safe_ports port 777         # multiling http
+
+#
+# Recommended minimum Access Permission configuration:
+#
+# Deny requests to certain unsafe ports
+http_access deny !Safe_ports
+
+# Deny CONNECT to other than secure SSL ports
+http_access deny CONNECT !SSL_ports
+
+# Only allow cachemgr access from localhost
+http_access allow localhost manager
+http_access deny manager
+
+# This default configuration only allows localhost requests because a more
+# permissive Squid installation could introduce new attack vectors into the
+# network by proxying external TCP connections to unprotected services.
+http_access allow localhost
+
+# The two deny rules below are unnecessary in this default configuration
+# because they are followed by a "deny all" rule. However, they may become
+# critically important when you start allowing external requests below them.
+
+# Protect web applications running on the same server as Squid. They often
+# assume that only local users can access them at "localhost" ports.
+http_access deny to_localhost
+
+# Protect cloud servers that provide local users with sensitive info about
+# their server via certain well-known link-local (a.k.a. APIPA) addresses.
+http_access deny to_linklocal
+
+#
+# INSERT YOUR OWN RULE(S) HERE TO ALLOW ACCESS FROM YOUR CLIENTS
+#
+
+# For example, to allow access from your local networks, you may uncomment the
+# following rule (and/or add rules that match your definition of "local"):
+http_access allow localnet
+
+# And finally deny all other access to this proxy
+http_access deny all
+
+# Squid normally listens to port 3128
+http_port 3128
+
+# Uncomment and adjust the following to add a disk cache directory.
+#cache_dir ufs /var/spool/squid 100 16 256
+
+# Leave coredumps in the first cache dir
+coredump_dir /var/spool/squid
+
+#
+# Add any of your own refresh_pattern entries above these.
+#
+refresh_pattern ^ftp:           1440    20%     10080
+refresh_pattern -i (/cgi-bin/|\?) 0     0%      0
+refresh_pattern .               0       20%     4320
 ```
 
 # squidの再起動
 sudo systemctl restart squid
 
-# client_pcで以下を操作
-# ※ 自宅のmacを想定
-ssh -i <ec2のキーペア> -N -L 3128:localhost:3128 ec2-user@<ec2のパブリックIP> # sshトンネリングで、localhost:3128 <-> ec2：3128 に繋げることが可能
-# macの「設定」 / 「プロキシ」 / 「Webプロキシ（HTTP）」 と 「保護されたWebプロキシ（HTTPS）」のサーバに localhost, ポートに 3128を設定（3128はsquidのデフォルト値）
+# 確認1 clientで以下を実行
+curl -v www.google.com
+> 
+...（省略）....
+< HTTP/1.1 200 OK
+...（省略）....
 
-# 確認
-# 1. webでネットが閲覧できるか確認
-# 2. ifconfig.me にアクセスして、どこからアクセスしているのか確認
-curl http://ifconfig.me 
-> <ec2のグローバルIP>                               # 自宅のグローバルIPではなく、ec2のグローバルIPが返ってきていればOK
-# 3. squid のログを確認
+# 確認2 clientで以下を実行
+curl ifconfig.me
+> 
+<proxyサーバのグローバルIP>
+
+# 確認3 proxyで以下のログを確認
 sudo vi /var/log/squid/access.log
+> 
+1733558149.812    167 <clientサーバのIP> TCP_MISS/200 21199 GET http://www.google.com/ - HIER_DIRECT/172.217.175.68 text/html

@@ -27,7 +27,7 @@ Resources:
           DeviceIndex: "0"
           SubnetId: { "Fn::ImportValue": !Sub "${ProjectName}-PubSub1aId" }
           GroupSet:
-            - !Ref EC2sg
+            - !Ref EC2sgProxy
       Tags:
         - Key: Name
           Value: !Sub ${ProjectName}-ec2-proxy
@@ -35,7 +35,7 @@ Resources:
   ############################################
   #### security group                     ####
   ############################################
-  EC2sg:
+  EC2sgProxy:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: !Sub ${ProjectName}-ec2-proxy-sg
@@ -56,30 +56,57 @@ Resources:
             { "Fn::ImportValue": !Sub "${ProjectName}-ec2-dns-sg" } # 自作DNSサーバと繋げる場合
             # 0.0.0.0/0                                                     # 外部DNSサーバと繋げる場合
       SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          CidrIp: !Sub ${MyHomeIP}
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: !Sub ${MyHomeIP}
+        # 自宅PCのproxy用
+        # - IpProtocol: tcp
+        #   FromPort: 80
+        #   ToPort: 80
+        #   CidrIp: !Sub ${MyHomeIP}
+        # - IpProtocol: tcp
+        #   FromPort: 443
+        #   ToPort: 443
+        #   CidrIp: !Sub ${MyHomeIP}
+        # - IpProtocol: tcp
+        #   FromPort: 22
+        #   ToPort: 22
+        #   CidrIp: !Sub ${MyHomeIP}
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
-          CidrIp: !Sub ${MyHomeIP}
+          SourceSecurityGroupId:
+            { "Fn::ImportValue": !Sub "${ProjectName}-ec2-proxy-bastion-sg" }
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 10.0.0.0/16
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.0.0.0/16
         - IpProtocol: tcp
           FromPort: 3128
           ToPort: 3128
-          CidrIp: !Sub ${MyHomeIP}
-        - IpProtocol: tcp
-          FromPort: 3128
-          ToPort: 3128
-          CidrIp: 10.0.10.0/24 # PubSub1aCiderBlockのCiderIp （clientのec2からの通信を許可）
+          xCidrIp: 10.0.0.0/16
       Tags:
         - Key: Name
           Value: !Sub ${ProjectName}-ec2-proxy-sg
       VpcId: { "Fn::ImportValue": !Sub "${ProjectName}-VpcId" }
+
+  ############################################
+  #### Delete Stack Sceduler              ####
+  ############################################
+  EventSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Description: "Delete Schedule"
+      ScheduleExpression: !Sub "cron(05 02 ? * * *)"
+      ScheduleExpressionTimezone: "Asia/Tokyo"
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      State: ENABLED
+      Target:
+        Arn: "arn:aws:scheduler:::aws-sdk:cloudformation:deleteStack"
+        Input: !Sub '{ "StackName": "${AWS::StackName}" }'
+        RoleArn: !ImportValue DeleteSchedulerRoleARN
 
 ############################################
 #### OutPuts                            ####
@@ -90,10 +117,10 @@ Outputs:
     Description: EC2 Proxy
     Export:
       Name: !Sub ${ProjectName}-ec2-proxy
-  EC2sgDns:
+  EC2sgProxy:
     Value:
       Fn::GetAtt:
-        - EC2sg
+        - EC2sgProxy
         - GroupId
     Description: Proxy EC2sg dns
     Export:

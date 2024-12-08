@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Create DNS
+Description: Create Client
 
 Parameters:
   ProjectName:
@@ -30,7 +30,7 @@ Resources:
             - !Ref EC2sgClient
       Tags:
         - Key: Name
-          Value: !Sub ${ProjectName}-ec2
+          Value: !Sub ${ProjectName}-ec2-client
 
   ############################################
   #### security group                     ####
@@ -44,16 +44,45 @@ Resources:
         - IpProtocol: -1
           FromPort: 0
           ToPort: 65535
-          CidrIp: "0.0.0.0/0"
+          DestinationSecurityGroupId:
+            { "Fn::ImportValue": !Sub "${ProjectName}-ec2-proxy-sg" }
+        - IpProtocol: tcp
+          FromPort: 53
+          ToPort: 53
+          DestinationSecurityGroupId:
+            { "Fn::ImportValue": !Sub "${ProjectName}-ec2-dns-sg" }
+        - IpProtocol: udp
+          FromPort: 53
+          ToPort: 53
+          DestinationSecurityGroupId:
+            { "Fn::ImportValue": !Sub "${ProjectName}-ec2-dns-sg" }
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
-          CidrIp: !Sub ${MyHomeIP}
+          SourceSecurityGroupId:
+            { "Fn::ImportValue": !Sub "${ProjectName}-ec2-proxy-bastion-sg" }
       Tags:
         - Key: Name
           Value: !Sub ${ProjectName}-ec2-client-sg
       VpcId: { "Fn::ImportValue": !Sub "${ProjectName}-VpcId" }
+
+  ############################################
+  #### Delete Stack Sceduler              ####
+  ############################################
+  EventSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Description: "Delete Schedule"
+      ScheduleExpression: !Sub "cron(00 02 ? * * *)"
+      ScheduleExpressionTimezone: "Asia/Tokyo"
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      State: ENABLED
+      Target:
+        Arn: "arn:aws:scheduler:::aws-sdk:cloudformation:deleteStack"
+        Input: !Sub '{ "StackName": "${AWS::StackName}" }'
+        RoleArn: !ImportValue DeleteSchedulerRoleARN
 
 ############################################
 #### OutPuts                            ####
@@ -64,7 +93,7 @@ Outputs:
     Description: EC2 Proxy Client
     Export:
       Name: !Sub ${ProjectName}-ec2-proxy-client
-  EC2sgDns:
+  EC2sgClient:
     Value:
       Fn::GetAtt:
         - EC2sgClient

@@ -1,14 +1,51 @@
 ## 参考
 # - https://qiita.com/koinunopochi/items/091dd3fe111dd37c328c
 
+# clientサーバで以下を実行
+sudo vi /etc/systemd/resolved.conf 
+```/etc/systemd/resolved.conf
+#  This file is part of systemd.
+#
+#  systemd is free software; you can redistribute it and/or modify it under the
+#  terms of the GNU Lesser General Public License as published by the Free
+#  Software Foundation; either version 2.1 of the License, or (at your option)
+#  any later version.
+#
+# Entries in this file show the compile time defaults. Local configuration
+# should be created by either modifying this file, or by creating "drop-ins" in
+# the resolved.conf.d/ subdirectory. The latter is generally recommended.
+# Defaults can be restored by simply deleting this file and all drop-ins.
+#
+# Use 'systemd-analyze cat-config systemd/resolved.conf' to display the full config.
+#
+# See resolved.conf(5) for details.
+
+[Resolve]
+# Some examples of DNS servers which may be used for DNS= and FallbackDNS=:
+# Cloudflare: 1.1.1.1#cloudflare-dns.com 1.0.0.1#cloudflare-dns.com 2606:4700:4700::1111#cloudflare-dns.com 2606:4700:4700::1001#cloudflare-dns.com
+# Google:     8.8.8.8#dns.google 8.8.4.4#dns.google 2001:4860:4860::8888#dns.google 2001:4860:4860::8844#dns.google
+# Quad9:      9.9.9.9#dns.quad9.net 149.112.112.112#dns.quad9.net 2620:fe::fe#dns.quad9.net 2620:fe::9#dns.quad9.net
+DNS=<DNSサーバのIPアドレス>
+#FallbackDNS=
+Domains=~.
+#DNSSEC=no
+#DNSOverTLS=no
+#MulticastDNS=no
+#LLMNR=no
+#Cache=yes
+#CacheFromLocalhost=no
+#DNSStubListener=yes
+#DNSStubListenerExtra=
+#ReadEtcHosts=yes
+#ResolveUnicastSingleLabel=no
+```
+
+# 以降はDNSサーバで実行
 # パッケージのアップデート
 sudo yum update -y
 
 # BINDのインストール
 sudo yum install bind -y
-
-# originalファイルとのコピーと保存
-sudo cp /etc/named.conf{,.original}
 
 # confファイルの編集
 sudo vi /etc/named.conf
@@ -25,7 +62,7 @@ sudo vi /etc/named.conf
 options {
         # listen-on port 53 { 127.0.0.1; };
         # DNSサーバが待機するIPアドレスとポートを設定する
-        listen-on           port 53 { 127.0.0.1; [EC2のPrivateIPアドレスを設定する] }; #TODO: ec2のprivate ipを設定
+        listen-on           port 53 { 127.0.0.1; <DNSサーバのPrivateIPアドレス> };
         listen-on-v6        port 53 { ::1; };
         directory           "/var/named";
         dump-file           "/var/named/data/cache_dump.db";
@@ -34,7 +71,7 @@ options {
         secroots-file       "/var/named/data/named.secroots";
         recursing-file      "/var/named/data/named.recursing";
         # すべて許可する設定。EC2のセキュリティーグループでアクセスは制限する
-        allow-query         { any; };
+        allow-query         { localhost; 10.0.0.0/8; };
 
         /*
          - If you are building an AUTHORITATIVE DNS server, do NOT enable recursion.
@@ -81,34 +118,8 @@ zone "." IN {
         type hint;
         file "named.ca";
 };
-# example.comに対するDNSクエリが来た場合に、原本をもつサーバ（type:master）として、
-# master.example.comに基づいて適切な処理を行う
-zone "example.com" IN {
-  type master;
-  file "master.example.com";
-};
-include "/etc/named.rfc1912.zones";
-include "/etc/named.root.key";
-```
 
-# ゾーンファイルの作成
-sudo vi /var/named/master.example.com
-```/var/named/master.exmaple.com
-$TTL 43200
-@       IN      SOA     help.example.com. ns01.example.com. (
-                            1          ; serial
-                            21600      ; refresh (6 hours)
-                            7200       ; retry (2 hours)
-                            1209600    ; expire (2 weeks)
-                            43200 )    ; minimum (12 hours)
-
-        IN      NS      ns01.example.com.
-
-ns01    IN      A       [EC2インスタンスのPrivateIP]
-www     IN      A       [EC2インスタンスのPrivateIP]
-```
 
 # bindの起動&自動起動の設定
-sudo systemctl start named
-sudo systemctl enable named
+sudo systemctl restart named
 
