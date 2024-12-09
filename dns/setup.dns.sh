@@ -1,44 +1,125 @@
 ## 参考
 # - https://qiita.com/koinunopochi/items/091dd3fe111dd37c328c
+# systemd-resolved の停止
+sudo systemctl status systemd-resolved
+sudo systemctl disable systemd-resolved 
 
-# clientサーバで以下を実行
-sudo vi /etc/systemd/resolved.conf 
-```/etc/systemd/resolved.conf
-#  This file is part of systemd.
+# clientでの名前解決禁止
+sudo vi /etc/resolv.conf
+```/etc/resolv.conf
+#This is /run/systemd/resolve/resolv.conf managed by man:systemd-resolved(8).
+# Do not edit.
 #
-#  systemd is free software; you can redistribute it and/or modify it under the
-#  terms of the GNU Lesser General Public License as published by the Free
-#  Software Foundation; either version 2.1 of the License, or (at your option)
-#  any later version.
+# This file might be symlinked as /etc/resolv.conf. If you're looking at
+# /etc/resolv.conf and seeing this text, you have followed the symlink.
 #
-# Entries in this file show the compile time defaults. Local configuration
-# should be created by either modifying this file, or by creating "drop-ins" in
-# the resolved.conf.d/ subdirectory. The latter is generally recommended.
-# Defaults can be restored by simply deleting this file and all drop-ins.
+# This is a dynamic resolv.conf file for connecting local clients directly to
+# all known uplink DNS servers. This file lists all configured search domains.
 #
-# Use 'systemd-analyze cat-config systemd/resolved.conf' to display the full config.
+# Third party programs should typically not access this file directly, but only
+# through the symlink at /etc/resolv.conf. To manage man:resolv.conf(5) in a
+# different way, replace this symlink by a static file or a different symlink.
 #
-# See resolved.conf(5) for details.
+# See man:systemd-resolved.service(8) for details about the supported modes of
+# operation for /etc/resolv.conf.
 
-[Resolve]
-# Some examples of DNS servers which may be used for DNS= and FallbackDNS=:
-# Cloudflare: 1.1.1.1#cloudflare-dns.com 1.0.0.1#cloudflare-dns.com 2606:4700:4700::1111#cloudflare-dns.com 2606:4700:4700::1001#cloudflare-dns.com
-# Google:     8.8.8.8#dns.google 8.8.4.4#dns.google 2001:4860:4860::8888#dns.google 2001:4860:4860::8844#dns.google
-# Quad9:      9.9.9.9#dns.quad9.net 149.112.112.112#dns.quad9.net 2620:fe::fe#dns.quad9.net 2620:fe::9#dns.quad9.net
-DNS=<DNSサーバのIPアドレス>
-#FallbackDNS=
-Domains=~.
-#DNSSEC=no
-#DNSOverTLS=no
-#MulticastDNS=no
-#LLMNR=no
-#Cache=yes
-#CacheFromLocalhost=no
-#DNSStubListener=yes
-#DNSStubListenerExtra=
-#ReadEtcHosts=yes
-#ResolveUnicastSingleLabel=no
+# nameserver 10.0.0.2                           # コメントアウトした
+# search ap-northeast-1.compute.internal        # コメントアウトした
 ```
+
+# proxyサーバで実行
+sudo vi /etc/squid/squid.conf
+```
+#
+# Recommended minimum configuration:
+#
+
+# Example rule allowing access from your local networks.
+# Adapt to list your (internal) IP networks from where browsing
+# should be allowed
+acl localnet src 0.0.0.1-0.255.255.255  # RFC 1122 "this" network (LAN)
+acl localnet src 10.0.0.0/8             # RFC 1918 local private network (LAN)
+acl localnet src 100.64.0.0/10          # RFC 6598 shared address space (CGN)
+acl localnet src 169.254.0.0/16         # RFC 3927 link-local (directly plugged) machines
+acl localnet src 172.16.0.0/12          # RFC 1918 local private network (LAN)
+acl localnet src 192.168.0.0/16         # RFC 1918 local private network (LAN)
+acl localnet src fc00::/7               # RFC 4193 local private network range
+acl localnet src fe80::/10              # RFC 4291 link-local (directly plugged) machines
+
+acl SSL_ports port 443
+acl Safe_ports port 80          # http
+acl Safe_ports port 21          # ftp
+acl Safe_ports port 443         # https
+acl Safe_ports port 70          # gopher
+acl Safe_ports port 210         # wais
+acl Safe_ports port 1025-65535  # unregistered ports
+acl Safe_ports port 280         # http-mgmt
+acl Safe_ports port 488         # gss-http
+acl Safe_ports port 591         # filemaker
+acl Safe_ports port 777         # multiling http
+
+#
+# Recommended minimum Access Permission configuration:
+#
+# Deny requests to certain unsafe ports
+http_access deny !Safe_ports
+
+# Deny CONNECT to other than secure SSL ports
+http_access deny CONNECT !SSL_ports
+
+# Only allow cachemgr access from localhost
+http_access allow localhost manager
+http_access deny manager
+
+# This default configuration only allows localhost requests because a more
+# permissive Squid installation could introduce new attack vectors into the
+# network by proxying external TCP connections to unprotected services.
+http_access allow localhost
+
+# The two deny rules below are unnecessary in this default configuration
+# because they are followed by a "deny all" rule. However, they may become
+# critically important when you start allowing external requests below them.
+
+# Protect web applications running on the same server as Squid. They often
+# assume that only local users can access them at "localhost" ports.
+http_access deny to_localhost
+
+# Protect cloud servers that provide local users with sensitive info about
+# their server via certain well-known link-local (a.k.a. APIPA) addresses.
+http_access deny to_linklocal
+
+#
+# INSERT YOUR OWN RULE(S) HERE TO ALLOW ACCESS FROM YOUR CLIENTS
+#
+
+# For example, to allow access from your local networks, you may uncomment the
+# following rule (and/or add rules that match your definition of "local"):
+http_access allow localnet
+
+# And finally deny all other access to this proxy
+http_access deny all
+
+# Squid normally listens to port 3128
+http_port 3128
+
+# Uncomment and adjust the following to add a disk cache directory.
+#cache_dir ufs /var/spool/squid 100 16 256
+
+# Leave coredumps in the first cache dir
+coredump_dir /var/spool/squid
+
+dns_nameservers 10.0.20.161                       # 追記
+
+#
+# Add any of your own refresh_pattern entries above these.
+#
+refresh_pattern ^ftp:           1440    20%     10080
+refresh_pattern -i (/cgi-bin/|\?) 0     0%      0
+refresh_pattern .               0       20%     4320
+
+```
+
+
 
 # 以降はDNSサーバで実行
 # パッケージのアップデート
