@@ -23,9 +23,9 @@ Resources:
       KeyName: !Ref KeyName
       InstanceType: t2.micro
       NetworkInterfaces:
-        - AssociatePublicIpAddress: "true"
+        - AssociatePublicIpAddress: "false"
           DeviceIndex: "0"
-          SubnetId: { "Fn::ImportValue": !Sub "${ProjectName}-PubSub1aId" }
+          SubnetId: { "Fn::ImportValue": !Sub "${ProjectName}-PriSub1aId" }
           GroupSet:
             - !Ref EC2sgProxy
       Tags:
